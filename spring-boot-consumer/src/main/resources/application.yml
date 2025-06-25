@@ -1,17 +1,19 @@
 spring:
   application:
     name: spring-boot-consumer
+  threads:
+    virtual:
+      enabled: true
   kafka:
+
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: spring-boot-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      enable-auto-commit: false
-      max-poll-records: 500
+      enable-auto-commit: true
     listener:
-      ack-mode: batch
       concurrency: 4
 
   datasource:
@@ -31,10 +33,6 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        jdbc:
-          batch_size: 100
-        order_inserts: true
-        order_updates: true
 
 management:
   endpoints:
@@ -51,5 +49,6 @@ server:
 
 logging:
   level:
+    root: WARN
     com.benchmark: INFO
-    org.springframework.kafka: WARN
+

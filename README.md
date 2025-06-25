@@ -160,6 +160,12 @@ spring_boot  | 42000         | 700 | 60.00        | 2025-01-01... | 2025-01-01..
    docker-compose up --scale spring-boot-consumer=2 --scale dotnet-consumer=2
    ```
 
+```
+   cd /Users/sanzar/Documents/springbootvsdotnetkafka && docker-compose build spring-boot-consumer
+sleep 5 && docker exec kafka kafka-topics --bootstrap-server localhost:9092 --describe --topic benchmark-topic
+docker exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic benchmark-topic --partitions 4 --replication-factor 1
+```
+
 3. **Monitor resource usage**
    ```bash
    docker stats

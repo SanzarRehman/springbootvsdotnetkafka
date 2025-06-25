@@ -2,7 +2,6 @@ using Confluent.Kafka;
 using DotNetConsumer.Data;
 using DotNetConsumer.Models;
 using Prometheus;
-using System.Diagnostics;
 
 namespace DotNetConsumer.Services;
 
@@ -11,8 +10,8 @@ public class KafkaConsumerService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly Counter _messagesProcessedCounter;
-    private readonly Histogram _processingTimeHistogram;
     private readonly ConsumerConfig _config;
+    private static long _messageCount = 0;
 
     public KafkaConsumerService(IServiceProvider serviceProvider, ILogger<KafkaConsumerService> logger)
     {
@@ -21,9 +20,6 @@ public class KafkaConsumerService
         
         _messagesProcessedCounter = Metrics
             .CreateCounter("kafka_messages_processed_total", "Number of Kafka messages processed", new[] { "consumer" });
-        
-        _processingTimeHistogram = Metrics
-            .CreateHistogram("kafka_message_processing_duration_seconds", "Time taken to process Kafka messages", new[] { "consumer" });
 
         var bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "localhost:9092";
         
@@ -32,26 +28,30 @@ public class KafkaConsumerService
             BootstrapServers = bootstrapServers,
             GroupId = "dotnet-group",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = false,
-            MaxPollIntervalMs = 300000,
-            SessionTimeoutMs = 30000,
-            FetchMaxBytes = 52428800,
-            MaxPartitionFetchBytes = 1048576
+            EnableAutoCommit = true
         };
     }
 
     public async Task StartConsumingAsync(CancellationToken cancellationToken)
     {
+        // Start 4 concurrent consumers
+        var consumerTasks = new List<Task>();
+        
+        for (int i = 0; i < 4; i++)
+        {
+            var consumerId = i + 1;
+            consumerTasks.Add(Task.Run(() => RunConsumerAsync(consumerId, cancellationToken), cancellationToken));
+        }
+        
+        await Task.WhenAll(consumerTasks);
+    }
+
+    private async Task RunConsumerAsync(int consumerId, CancellationToken cancellationToken)
+    {
         using var consumer = new ConsumerBuilder<string, string>(_config).Build();
         
         consumer.Subscribe("benchmark-topic");
-        _logger.LogInformation("Started consuming from benchmark-topic");
-
-        var messages = new List<ConsumeResult<string, string>>();
-        const int batchSize = 500;
-        var batchTimeout = TimeSpan.FromMilliseconds(100);
-        var lastBatchTime = DateTime.UtcNow;
-
+        
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -62,68 +62,44 @@ public class KafkaConsumerService
                     
                     if (consumeResult != null)
                     {
-                        messages.Add(consumeResult);
-                    }
-
-                    var shouldProcessBatch = messages.Count >= batchSize ||
-                                           (messages.Count > 0 && DateTime.UtcNow - lastBatchTime > batchTimeout);
-
-                    if (shouldProcessBatch)
-                    {
-                        await ProcessBatchAsync(messages);
+                        long currentCount = Interlocked.Increment(ref _messageCount);
                         
-                        foreach (var message in messages)
+                        using var scope = _serviceProvider.CreateScope();
+                        var context = scope.ServiceProvider.GetRequiredService<BenchmarkContext>();
+
+                        var entity = new DotNetMessage
                         {
-                            consumer.Commit(message);
-                        }
+                            MessageId = Guid.NewGuid().ToString(),
+                            Content = consumeResult.Message.Value,
+                            Timestamp = DateTime.UtcNow,
+                            ProcessedAt = DateTime.UtcNow
+                        };
+
+                        await context.DotNetMessages.AddAsync(entity);
+                        await context.SaveChangesAsync();
+
+                        _messagesProcessedCounter.WithLabels("dotnet").Inc();
                         
-                        messages.Clear();
-                        lastBatchTime = DateTime.UtcNow;
+                        Console.WriteLine($".NET Consumer [{consumerId}] processed message #{currentCount} from partition {consumeResult.Partition}");
                     }
                 }
                 catch (ConsumeException e)
                 {
-                    _logger.LogError(e, "Error consuming message: {Error}", e.Error.Reason);
+                    Console.WriteLine($".NET Consumer [{consumerId}] error: {e.Error.Reason}");
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Kafka consumer cancelled");
+            Console.WriteLine($".NET Consumer [{consumerId}] cancelled");
         }
         finally
         {
             consumer.Close();
-            _logger.LogInformation("Kafka consumer closed");
-        }
-    }
-
-    private async Task ProcessBatchAsync(List<ConsumeResult<string, string>> messages)
-    {
-        using var timer = _processingTimeHistogram.WithLabels("dotnet").NewTimer();
-        using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<BenchmarkContext>();
-
-        try
-        {
-            var entities = messages.Select(msg => new DotNetMessage
-            {
-                MessageId = Guid.NewGuid().ToString(),
-                Content = msg.Message.Value,
-                Timestamp = DateTime.UtcNow,
-                ProcessedAt = DateTime.UtcNow
-            }).ToList();
-
-            await context.DotNetMessages.AddRangeAsync(entities);
-            await context.SaveChangesAsync();
-
-            _messagesProcessedCounter.WithLabels("dotnet").Inc(messages.Count);
-            _logger.LogDebug("Processed batch of {Count} messages", messages.Count);
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Error processing batch of {Count} messages", messages.Count);
-            throw;
         }
     }
 }
