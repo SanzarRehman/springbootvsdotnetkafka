@@ -24,65 +24,23 @@ class MessageProducer {
         await this.producer.connect();
         console.log('Connected to Kafka');
         
+        // Create topic if it doesn't exist
         const admin = this.kafka.admin();
         await admin.connect();
         
         try {
-            // Check if topic exists and get its metadata
-            console.log(`Checking topic: ${this.topicName}`);
-            const metadata = await admin.fetchTopicMetadata({ topics: [this.topicName] });
-            const topicMetadata = metadata.topics.find(t => t.name === this.topicName);
-            
-            if (topicMetadata && topicMetadata.partitions.length !== 4) {
-                console.log(`Topic ${this.topicName} exists with ${topicMetadata.partitions.length} partitions, but we need 4. Deleting and recreating...`);
-                
-                // Delete the existing topic with wrong partition count
-
-                
-                // Wait for deletion to complete
-                await new Promise(resolve => setTimeout(resolve, 3000));
-            } else if (topicMetadata && topicMetadata.partitions.length === 4) {
-                console.log(`Topic ${this.topicName} already exists with 4 partitions - using existing topic`);
-                await admin.disconnect();
-                return;
-            }
-            
-            // Create topic with 4 partitions
-            
-            
+            await admin.createTopics({
+                topics: [{
+                    topic: this.topicName,
+                    numPartitions: 3,
+                    replicationFactor: 1
+                }]
+            });
+            console.log(`Topic ${this.topicName} created successfully`);
         } catch (error) {
-            if (error.message.includes('UnknownTopicOrPartition') || error.message.includes('does not exist')) {
-                // Topic doesn't exist, create it
-                try {
-                    await admin.createTopics({
-                        topics: [{
-                            topic: this.topicName,
-                            numPartitions: 4,
-                            replicationFactor: 1
-                        }]
-                    });
-                    console.log(`Topic ${this.topicName} created with 4 partitions`);
-                } catch (createError) {
-                    console.log(`Topic creation result: ${createError.message}`);
-                }
-            } else {
-                console.log(`Topic management result: ${error.message}`);
-            }
+            console.log(`Topic creation result: ${error.message}`);
         }
         
-        await admin.disconnect();
-        
-        // Verify the topic has 4 partitions
-        await admin.connect();
-        try {
-            const finalMetadata = await admin.fetchTopicMetadata({ topics: [this.topicName] });
-            const finalTopicMetadata = finalMetadata.topics.find(t => t.name === this.topicName);
-            if (finalTopicMetadata) {
-                console.log(`✅ Verified: Topic ${this.topicName} has ${finalTopicMetadata.partitions.length} partitions`);
-            }
-        } catch (verifyError) {
-            console.log(`Topic verification error: ${verifyError.message}`);
-        }
         await admin.disconnect();
     }
 

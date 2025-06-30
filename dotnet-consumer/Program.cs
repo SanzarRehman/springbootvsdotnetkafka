@@ -25,9 +25,8 @@ var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
 builder.Services.AddDbContext<BenchmarkContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Add Kafka consumer service
-builder.Services.AddSingleton<KafkaConsumerService>();
-builder.Services.AddHostedService<KafkaConsumerHostedService>();
+// Add high-performance Kafka consumer service
+builder.Services.AddHostedService<KafkaMessageConsumer>();
 
 var app = builder.Build();
 

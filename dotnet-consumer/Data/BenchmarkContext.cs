@@ -17,6 +17,7 @@ public class BenchmarkContext : DbContext
 
         modelBuilder.Entity<DotNetMessage>(entity =>
         {
+            entity.ToTable("dotnet_messages"); // Map to the correct table name
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedOnAdd();
             entity.HasIndex(e => e.MessageId);

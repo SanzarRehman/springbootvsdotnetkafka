@@ -10,11 +10,26 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-echo "Building and starting all services..."
-docker-compose up --build -d
+echo "Building and starting infrastructure services..."
+docker-compose up --build -d kafka zookeeper postgres
 
-echo "Waiting for services to be ready..."
-sleep 30
+echo "Waiting for Kafka to be ready..."
+sleep 15
+
+echo "Setting up Kafka topic with 4 partitions..."
+./scripts/setup-topic.sh
+
+echo "Starting consumer services..."
+docker-compose up --build -d spring-boot-consumer dotnet-consumer
+
+echo "Waiting for consumers to be ready..."
+sleep 10
+
+echo "Starting message producer..."
+docker-compose up --build -d message-producer
+
+echo "Waiting for all services to be fully ready..."
+sleep 15
 
 echo "Services started! Monitoring URLs:"
 echo "- Spring Boot Metrics: http://localhost:8080/actuator/metrics"

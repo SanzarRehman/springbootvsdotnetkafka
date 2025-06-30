@@ -79,8 +79,11 @@ public class KafkaConsumerService
                         await context.SaveChangesAsync();
 
                         _messagesProcessedCounter.WithLabels("dotnet").Inc();
-                        
-                        Console.WriteLine($".NET Consumer [{consumerId}] processed message #{currentCount} from partition {consumeResult.Partition}");
+                        if(currentCount % 1000 == 0)
+                        {
+                           Console.WriteLine($".NET Consumer [{consumerId}] processed message #{currentCount} from partition {consumeResult.Partition}");
+                        }
+                       
                     }
                 }
                 catch (ConsumeException e)

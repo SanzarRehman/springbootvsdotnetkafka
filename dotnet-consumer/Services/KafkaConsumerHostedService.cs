@@ -1,36 +1,82 @@
 namespace DotNetConsumer.Services;
 
-public class KafkaConsumerHostedService : BackgroundService
-{
-    private readonly KafkaConsumerService _kafkaConsumerService;
-    private readonly ILogger<KafkaConsumerHostedService> _logger;
+using Confluent.Kafka;
+using DotNetConsumer.Data;
+using DotNetConsumer.Models;
+using Microsoft.Extensions.Hosting;
 
-    public KafkaConsumerHostedService(
-        KafkaConsumerService kafkaConsumerService,
-        ILogger<KafkaConsumerHostedService> logger)
+internal class KafkaMessageConsumer : IHostedService
+{
+    private const int Concurrency = 50;
+    private const string GroupId = "spring-boot-group";
+    private const string TopicName = "benchmark-topic";
+    
+    private readonly List<Task> kafkaListenerTasks = [];
+    private readonly CancellationTokenSource cancellationTokenSource = new();
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<KafkaMessageConsumer> _logger;
+    private readonly string _bootstrapServers;
+
+    public KafkaMessageConsumer(IServiceProvider serviceProvider, ILogger<KafkaMessageConsumer> logger)
     {
-        _kafkaConsumerService = kafkaConsumerService;
+        _serviceProvider = serviceProvider;
         _logger = logger;
+        _bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "localhost:9092";
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Kafka Consumer Hosted Service starting");
-        
+        StartConsumers(TopicName, cancellationTokenSource.Token);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            await _kafkaConsumerService.StartConsumingAsync(stoppingToken);
+            cancellationTokenSource.Cancel();
+
+            await Task.WhenAll(kafkaListenerTasks);
         }
-        catch (Exception ex)
+        catch (Exception e)
         {
-            _logger.LogError(ex, "Error in Kafka Consumer Hosted Service");
-            throw;
+            Console.WriteLine(e);
         }
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    private void StartConsumers(string topicName, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Kafka Consumer Hosted Service stopping");
-        await base.StopAsync(cancellationToken);
+        ConsumerConfig consumerConfig = new()
+        {
+            EnableAutoCommit = false,
+            EnableAutoOffsetStore = false,
+            GroupId = GroupId,
+            AllowAutoCreateTopics = true,
+            BootstrapServers = _bootstrapServers,
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky,
+            // High-performance settings matching Java
+            FetchMinBytes = 1,
+            FetchWaitMaxMs = 100,
+            MaxPollIntervalMs = 300000,
+            SessionTimeoutMs = 10000,
+            HeartbeatIntervalMs = 3000,
+            // Batch processing optimizations
+            MaxPartitionFetchBytes = 1048576, // 1MB
+        };
+
+        IConsumer<string, string> consumer = new ConsumerBuilder<string, string>(consumerConfig).Build();
+
+        consumer.Subscribe(topicName);
+
+        KafkaMessageDispatcherBase<string> kafkaMessageHandler = Concurrency == 1 
+            ? new OrderedKafkaMessageHandler(topicName, consumer, _serviceProvider) 
+            : new KafkaMessageHandler(topicName, Concurrency, consumer, _serviceProvider);
+
+        Task kafkaListenerTask = kafkaMessageHandler.StartAsync(cancellationToken);
+
+        kafkaListenerTasks.Add(kafkaListenerTask);
+
+        Console.WriteLine($"Started Kafka consumer for topic '{topicName}' with concurrency {Concurrency} connecting to {_bootstrapServers}.");
     }
 }
