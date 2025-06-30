@@ -46,15 +46,48 @@ This project compares the performance of Spring Boot and .NET applications consu
 - `MESSAGES_PER_SECOND`: Rate of message generation (default: 1000)
 - `TOPIC_NAME`: Kafka topic name (default: benchmark-topic)
 
-### Spring Boot Consumer
-- Concurrency: 4 consumer threads
-- Batch size: 500 messages
-- Connection pool: 20 connections
+### Consumer Configuration Comparison
 
-### .NET Consumer
-- Batch size: 500 messages
-- 4 Kafka partitions
-- Optimized Entity Framework settings
+Both consumers are identically configured for fair performance comparison:
+
+| Setting | Spring Boot | .NET | Status |
+|---------|-------------|------|--------|
+| **Concurrency** | 50 threads | 50 threads | ✅ Identical |
+| **Consumer Group** | "simple" | "simple" | ✅ Identical |
+| **Topic** | "benchmark-topic" | "benchmark-topic" | ✅ Identical |
+| **Auto Commit** | false | false | ✅ Identical |
+| **Auto Offset Reset** | "latest" | Latest | ✅ Identical |
+| **Fetch Min Bytes** | 1 | 1 | ✅ Identical |
+| **Fetch Wait Max Ms** | 100ms | 100ms | ✅ Identical |
+| **Max Poll Interval** | 300000ms (5 min) | 300000ms (5 min) | ✅ Identical |
+| **Session Timeout** | 30000ms (30 sec) | 30000ms (30 sec) | ✅ Identical |
+| **Heartbeat Interval** | 3000ms | 3000ms | ✅ Identical |
+| **Poll Timeout** | 1000ms | 1000ms | ✅ Identical |
+| **Partition Strategy** | CooperativeSticky | CooperativeSticky | ✅ Identical |
+| **Message Format** | String key/value | String key/value | ✅ Identical |
+| **Commit Strategy** | Manual after DB save | Manual after DB save | ✅ Identical |
+
+### Fair Comparison Features
+
+- **Same Consumer Group**: Both consumers compete for the same messages
+- **Identical Kafka Settings**: Same timeouts, fetch sizes, and polling behavior
+- **Matched Concurrency**: Both use 50 concurrent message processors
+- **Equivalent Processing**: Both save individual messages to database before committing
+- **Same Message Format**: Both handle string keys and JSON string values
+
+This ensures performance differences reflect only the runtime characteristics of:
+- **Spring Boot/Java** with Hibernate + PostgreSQL driver
+- **.NET Core/C#** with Entity Framework + Npgsql driver
+
+### Spring Boot Consumer Details
+- Concurrency: 50 processing threads
+- Database: Hibernate with connection pool (20 connections)
+- Commit: Manual sync commits after batch processing
+
+### .NET Consumer Details  
+- Concurrency: 50 processing threads via Channel-based dispatcher
+- Database: Entity Framework Core with connection pooling
+- Commit: Manual commits with thread-safe locking
 
 ## Monitoring
 

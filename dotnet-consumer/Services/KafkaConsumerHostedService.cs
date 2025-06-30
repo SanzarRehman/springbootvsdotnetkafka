@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 internal class KafkaMessageConsumer : IHostedService
 {
     private const int Concurrency = 50;
-    private const string GroupId = "spring-boot-group";
+    private const string GroupId = "simple";  // Match Spring Boot
     private const string TopicName = "benchmark-topic";
     
     private readonly List<Task> kafkaListenerTasks = [];
@@ -53,15 +53,15 @@ internal class KafkaMessageConsumer : IHostedService
             GroupId = GroupId,
             AllowAutoCreateTopics = true,
             BootstrapServers = _bootstrapServers,
-            AutoOffsetReset = AutoOffsetReset.Earliest,
+            AutoOffsetReset = AutoOffsetReset.Latest,  // Match Spring Boot
             PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky,
-            // High-performance settings matching Java
+            // High-performance settings matching Java exactly
             FetchMinBytes = 1,
             FetchWaitMaxMs = 100,
-            MaxPollIntervalMs = 300000,
-            SessionTimeoutMs = 10000,
+            MaxPollIntervalMs = 300000,  // 5 minutes
+            SessionTimeoutMs = 30000,    // 30 seconds - Match Spring Boot
             HeartbeatIntervalMs = 3000,
-            // Batch processing optimizations
+            // Batch processing optimizations  
             MaxPartitionFetchBytes = 1048576, // 1MB
         };
 

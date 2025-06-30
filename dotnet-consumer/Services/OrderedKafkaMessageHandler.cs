@@ -17,7 +17,7 @@ public class OrderedKafkaMessageHandler : KafkaMessageDispatcherBase<string>
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var consumeResult = Consumer.Consume(TimeSpan.FromMilliseconds(100));
+                var consumeResult = Consumer.Consume(TimeSpan.FromMilliseconds(1000)); // Match Spring Boot's 1000ms
                 if (consumeResult != null)
                 {
                     await ProcessMessage(consumeResult);
