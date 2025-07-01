@@ -6,13 +6,13 @@ public abstract class KafkaMessageDispatcherBase<T>
 {
     protected readonly string TopicName;
     protected readonly IConsumer<string, T> Consumer;
-    protected readonly IServiceProvider ServiceProvider;
+    protected readonly DbContextProvider DbContextProvider;
 
-    protected KafkaMessageDispatcherBase(string topicName, IConsumer<string, T> consumer, IServiceProvider serviceProvider)
+    protected KafkaMessageDispatcherBase(string topicName, IConsumer<string, T> consumer, DbContextProvider dbContextProvider)
     {
         TopicName = topicName;
         Consumer = consumer;
-        ServiceProvider = serviceProvider;
+        DbContextProvider = dbContextProvider;
     }
 
     public abstract Task StartAsync(CancellationToken cancellationToken);

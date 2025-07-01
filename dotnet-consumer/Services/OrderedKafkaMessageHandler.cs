@@ -6,8 +6,8 @@ namespace DotNetConsumer.Services;
 
 public class OrderedKafkaMessageHandler : KafkaMessageDispatcherBase<string>
 {
-    public OrderedKafkaMessageHandler(string topicName, IConsumer<string, string> consumer, IServiceProvider serviceProvider)
-        : base(topicName, consumer, serviceProvider)
+    public OrderedKafkaMessageHandler(string topicName, IConsumer<string, string> consumer, DbContextProvider dbContextProvider)
+        : base(topicName, consumer, dbContextProvider)
     {
     }
 
@@ -38,8 +38,7 @@ public class OrderedKafkaMessageHandler : KafkaMessageDispatcherBase<string>
     {
         try
         {
-            using var scope = ServiceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<BenchmarkContext>();
+            using var context = DbContextProvider.CreateContext();
 
             var entity = new DotNetMessage
             {
@@ -58,7 +57,6 @@ public class OrderedKafkaMessageHandler : KafkaMessageDispatcherBase<string>
         catch (Exception ex)
         {
             Console.WriteLine($"Error processing message: {ex.Message}");
-            // Add retry logic if needed
         }
     }
 }

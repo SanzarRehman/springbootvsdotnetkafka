@@ -8,25 +8,25 @@ using Microsoft.Extensions.Hosting;
 internal class KafkaMessageConsumer : IHostedService
 {
     private const int Concurrency = 50;
-    private const string GroupId = "simple";  // Match Spring Boot
+    private const string GroupId = "dotnet-consumer-group"; // Unique group for .NET
     private const string TopicName = "benchmark-topic";
     
     private readonly List<Task> kafkaListenerTasks = [];
     private readonly CancellationTokenSource cancellationTokenSource = new();
-    private readonly IServiceProvider _serviceProvider;
+    private readonly DbContextProvider _dbContextProvider;
     private readonly ILogger<KafkaMessageConsumer> _logger;
     private readonly string _bootstrapServers;
 
-    public KafkaMessageConsumer(IServiceProvider serviceProvider, ILogger<KafkaMessageConsumer> logger)
+    public KafkaMessageConsumer(DbContextProvider dbContextProvider, ILogger<KafkaMessageConsumer> logger)
     {
-        _serviceProvider = serviceProvider;
+        _dbContextProvider = dbContextProvider;
         _logger = logger;
         _bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "localhost:9092";
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        StartConsumers(TopicName, cancellationTokenSource.Token);
+        StartConsumers(TopicName, _dbContextProvider, cancellationTokenSource.Token);
         return Task.CompletedTask;
     }
 
@@ -44,7 +44,7 @@ internal class KafkaMessageConsumer : IHostedService
         }
     }
 
-    private void StartConsumers(string topicName, CancellationToken cancellationToken)
+    private void StartConsumers(string topicName, DbContextProvider dbContextProvider, CancellationToken cancellationToken)
     {
         ConsumerConfig consumerConfig = new()
         {
@@ -53,7 +53,7 @@ internal class KafkaMessageConsumer : IHostedService
             GroupId = GroupId,
             AllowAutoCreateTopics = true,
             BootstrapServers = _bootstrapServers,
-            AutoOffsetReset = AutoOffsetReset.Latest,  // Match Spring Boot
+            AutoOffsetReset = AutoOffsetReset.Latest,
             PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky,
             // High-performance settings matching Java exactly
             FetchMinBytes = 1,
@@ -69,9 +69,8 @@ internal class KafkaMessageConsumer : IHostedService
 
         consumer.Subscribe(topicName);
 
-        KafkaMessageDispatcherBase<string> kafkaMessageHandler = Concurrency == 1 
-            ? new OrderedKafkaMessageHandler(topicName, consumer, _serviceProvider) 
-            : new KafkaMessageHandler(topicName, Concurrency, consumer, _serviceProvider);
+        // Use single handler type for better performance
+        KafkaMessageDispatcherBase<string> kafkaMessageHandler = new KafkaMessageHandler(topicName, Concurrency, consumer, dbContextProvider);
 
         Task kafkaListenerTask = kafkaMessageHandler.StartAsync(cancellationToken);
 

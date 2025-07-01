@@ -12,8 +12,8 @@ public class KafkaMessageHandler : KafkaMessageDispatcherBase<string>
     private readonly ChannelWriter<ConsumeResult<string, string>> _channelWriter;
     private readonly ChannelReader<ConsumeResult<string, string>> _channelReader;
 
-    public KafkaMessageHandler(string topicName, int concurrency, IConsumer<string, string> consumer, IServiceProvider serviceProvider)
-        : base(topicName, consumer, serviceProvider)
+    public KafkaMessageHandler(string topicName, int concurrency, IConsumer<string, string> consumer, DbContextProvider dbContextProvider)
+        : base(topicName, consumer, dbContextProvider)
     {
         _concurrency = concurrency;
         var options = new BoundedChannelOptions(1000)
@@ -89,8 +89,7 @@ public class KafkaMessageHandler : KafkaMessageDispatcherBase<string>
     {
         try
         {
-            using var scope = ServiceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<BenchmarkContext>();
+            using var context = DbContextProvider.CreateContext();
 
             var entity = new DotNetMessage
             {
@@ -103,7 +102,7 @@ public class KafkaMessageHandler : KafkaMessageDispatcherBase<string>
             await context.DotNetMessages.AddAsync(entity);
             await context.SaveChangesAsync();
 
-            // Manual commit - using lock for thread safety like Java
+            // Manual commit - using lock for thread safety
             lock (Consumer)
             {
                 Consumer.Commit(consumeResult);
@@ -112,7 +111,6 @@ public class KafkaMessageHandler : KafkaMessageDispatcherBase<string>
         catch (Exception ex)
         {
             Console.WriteLine($"Error processing message: {ex.Message}");
-            // Add retry logic if needed
         }
     }
 }
